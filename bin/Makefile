@@ -15,7 +15,7 @@ SUBDIR= cat \
 	echo \
 	ed \
 	expr \
-	freebsd-version \
+	uqc-version \
 	getfacl \
 	hostname \
 	kenv \

@@ -527,7 +527,7 @@ AC_DEFUN([ZFS_AC_DEFAULT_PACKAGE], [
 			VENDOR=debian ;
 		elif test -f /etc/alpine-release ; then
 			VENDOR=alpine ;
-		elif test -f /bin/freebsd-version ; then
+		elif test -f /bin/uqc-version ; then
 			VENDOR=freebsd ;
 		else
 			VENDOR= ;
