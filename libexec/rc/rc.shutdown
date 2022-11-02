@@ -1,5 +1,11 @@
 #!/bin/sh
 #
+# The following block was added by Uquinix Inc.
+# Silence messages if boot_mute="YES" is set
+if [ "$(kenv boot_mute 2>/dev/null)" = "YES" ] ; then
+        exec 1>>/dev/null 2>&1
+fi
+#
 # Copyright (c) 1997  Ollivier Robert
 # All rights reserved.
 #
