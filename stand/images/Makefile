@@ -1,8 +1,8 @@
-# $FreeBSD$
+# $Uquinix$
 
 .include <bsd.init.mk>
 
-FILES+=	freebsd-brand-rev.png freebsd-brand.png freebsd-logo-rev.png
+FILES+=	enso-brand-rev.png enso-brand.png enso-logo-rev.png
 
 FILESDIR=  /boot/images
 
