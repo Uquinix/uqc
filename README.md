@@ -3,7 +3,7 @@ What is UQC?
 
 UQC (Uquinix Core) is a kernel based on FreeBSD. UQC runs on numerous architectures for single and multi-processor configurations.
 
-For any enquiries, contact jack@uquinix.com.
+For any enquiries, contact uqc@uquinix.com.
 
 And for security-related enquiries, please encrypt your email using our [GPG key](https://developer.uquinix.com/keys/signing-key.asc) and contact security@uquinix.com.
 
