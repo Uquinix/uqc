@@ -38,22 +38,21 @@ __RCSID("$NetBSD: wcsncmp.c,v 1.3 2001/01/05 12:13:13 itojun Exp $");
 #endif
 __FBSDID("$FreeBSD$");
 
+#include <stdint.h>
 #include <wchar.h>
 
 int
 wcsncmp(const wchar_t *s1, const wchar_t *s2, size_t n)
 {
 
-	if (n == 0)
-		return (0);
-	do {
-		if (*s1 != *s2++) {
+	for (; n; --n) {
+		if (*s1 != *s2) {
 			/* XXX assumes wchar_t = int */
-			return (*(const unsigned int *)s1 -
-			    *(const unsigned int *)--s2);
+			return ((uintmax_t)*s1 > (uintmax_t)*s2 ? 1 : -1);
 		}
-		if (*s1++ == 0)
+		if (*s1 == L'\0')
 			break;
-	} while (--n != 0);
+		++s1, ++s2;
+	}
 	return (0);
 }

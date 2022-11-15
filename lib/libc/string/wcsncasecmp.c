@@ -29,6 +29,7 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include <stdint.h>
 #include <wchar.h>
 #include <wctype.h>
 
@@ -43,9 +44,9 @@ wcsncasecmp(const wchar_t *s1, const wchar_t *s2, size_t n)
 		c1 = towlower(*s1);
 		c2 = towlower(*s2);
 		if (c1 != c2)
-			return ((int)c1 - c2);
-		if (--n == 0)
+			return ((uintmax_t)c1 > (uintmax_t)c2 ? 1 : -1);
+		if (c1 == L'\0' || --n == 0)
 			return (0);
 	}
-	return (-*s2);
+	return (-1);
 }

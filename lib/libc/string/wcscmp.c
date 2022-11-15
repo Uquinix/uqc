@@ -41,6 +41,7 @@ __RCSID("$NetBSD: wcscmp.c,v 1.3 2001/01/05 12:13:12 itojun Exp $");
 #endif /* LIBC_SCCS and not lint */
 __FBSDID("$FreeBSD$");
 
+#include <stdint.h>
 #include <wchar.h>
 
 /*
@@ -50,9 +51,11 @@ int
 wcscmp(const wchar_t *s1, const wchar_t *s2)
 {
 
-	while (*s1 == *s2++)
-		if (*s1++ == '\0')
+	while (*s1 == *s2) {
+		if (*s1 == L'\0')
 			return (0);
+		++s1, ++s2;
+	}
 	/* XXX assumes wchar_t = int */
-	return (*(const unsigned int *)s1 - *(const unsigned int *)--s2);
+	return ((uintmax_t)*s1 > (uintmax_t)*s2 ? 1 : -1);
 }
