@@ -52,12 +52,19 @@
 #   xargs -n1 | sort | uniq -d;
 # done
 
+# 20221202: remove trpt(8)
+OLD_FILES+=usr/sbin/trpt
+OLD_FILES+=usr/share/man/man8/trpt.8.gz
+
+# 20221117: remove typo'd man page link
+OLD_FILES+=usr/share/man/man9/vm_map_wire_mapped.9.gz
+
 # 20221114: remove othermta
 OLD_FILES+=etc/rc.d/othermta
 
 # 20221109: remove rc.sendmail(8)
 OLD_FILES+=etc/rc.sendmail
-OLD_FILES+=share/man/man8/rc.sendmail.8.gz
+OLD_FILES+=usr/share/man/man8/rc.sendmail.8.gz
 
 # 20221015: update the ithread(9) man page
 OLD_FILES+=usr/share/man/man9/ithread.9.gz
@@ -12755,8 +12762,8 @@ OLD_DIRS+=usr/share/xml/atf
 OLD_DIRS+=usr/share/xml
 OLD_DIRS+=usr/share/xsl/atf
 OLD_DIRS+=usr/share/xsl
-# 20131009: uqc-version moved from /libexec to /bin
-OLD_FILES+=libexec/uqc-version
+# 20131009: freebsd-version moved from /libexec to /bin
+OLD_FILES+=libexec/freebsd-version
 # 20131001: ar and ranlib from binutils not used
 OLD_FILES+=usr/bin/gnu-ar
 OLD_FILES+=usr/bin/gnu-ranlib
