@@ -257,7 +257,11 @@ netif_common()
 		esac
 		if check_startmsgs; then
 			for ifn in ${_ok}; do
-				/sbin/ifconfig ${ifn} 1> /dev/null 2> /dev/null
+				if [ "$(kenv boot_mute 2>/dev/null)" = "YES" ] ; then
+					/sbin/ifconfig ${ifn} 1> /dev/null 2> /dev/null
+				else
+					/sbin/ifconfig ${ifn} 1> /dev/null 2> /dev/null
+				fi
 			done
 		fi
 	fi
