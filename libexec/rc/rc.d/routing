@@ -94,14 +94,22 @@ setroutes()
 	_ret=0
 	case $1 in
 	static)
-		static_$2 add $3 1> /dev/null 2> /dev/null
+		if [ "$(kenv boot_mute 2>/dev/null)" = "YES" ] ; then
+			static_$2 add $3 1> /dev/null 2> /dev/null
+		else
+			static_$2 add $3
+		fi
 		_ret=$?
 		;;
 	options)
 		options_$2
 		;;
 	doall)
-		static_$2 add $3 1> /dev/null 2> /dev/null
+		if [ "$(kenv boot_mute 2>/dev/null)" = "YES" ] ; then
+			static_$2 add $3 1> /dev/null 2> /dev/null
+		else
+			static_$2 add $3
+		fi
 		_ret=$?
 		options_$2
 		;;
