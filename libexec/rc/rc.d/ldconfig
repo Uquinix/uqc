@@ -1,5 +1,4 @@
 #!/bin/sh
-#
 # $FreeBSD$
 #
 
@@ -37,7 +36,11 @@ ldconfig_start()
 				_LDC="${_LDC} ${i}"
 			fi
 		done
-		startmsg 'ELF ldconfig path:' ${_LDC} 1> /dev/null
+		if [ "$(kenv boot_mute 2>/dev/null)" = "YES" ] ; then
+			startmsg 'ELF ldconfig path:' ${_LDC} 1> /dev/null
+		else
+			startmsg 'ELF ldconfig path:' ${_LDC}
+		fi
 		${ldconfig} -elf ${_ins} ${_LDC}
 
 		machine_arch=$(sysctl -n hw.machine_arch)
