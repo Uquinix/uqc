@@ -73,7 +73,11 @@ devmatch_start()
 		esac
 		kldstat -q -n ${m} || \
 		    (
-				# echo "Autoloading module: ${m}"; kldload -n ${m}
+				if [ "$(kenv boot_mute 2>/dev/null)" = "YES" ] ; then
+					# echo "Autoloading module: ${m}"; kldload -n ${m}
+				else
+					echo "Autoloading module: ${m}"; kldload -n ${m}
+				fi
 			)
 	done
 	devctl thaw
