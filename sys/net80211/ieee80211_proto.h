@@ -27,440 +27,459 @@
  *
  * $FreeBSD$
  */
-#ifndef _NET80211_IEEE80211_PROTO_H_
-#define _NET80211_IEEE80211_PROTO_H_
+#ifndef _NET80211_IEEE80211_NODE_H_
+#define _NET80211_IEEE80211_NODE_H_
+
+#include <net80211/ieee80211_ioctl.h>		/* for ieee80211_nodestats */
+#include <net80211/ieee80211_ht.h>		/* for aggregation state */
 
 /*
- * 802.11 protocol implementation definitions.
+ * Each ieee80211com instance has a single timer that fires every
+ * IEEE80211_INACT_WAIT seconds to handle "inactivity processing".
+ * This is used to do node inactivity processing when operating
+ * as an AP, adhoc or mesh mode.  For inactivity processing each node
+ * has a timeout set in its ni_inact field that is decremented
+ * on each timeout and the node is reclaimed when the counter goes
+ * to zero.  We use different inactivity timeout values depending
+ * on whether the node is associated and authorized (either by
+ * 802.1x or open/shared key authentication) or associated but yet
+ * to be authorized.  The latter timeout is shorter to more aggressively
+ * reclaim nodes that leave part way through the 802.1x exchange.
  */
+#define	IEEE80211_INACT_WAIT	15		/* inactivity interval (secs) */
+#define	IEEE80211_INACT_INIT	(30/IEEE80211_INACT_WAIT)	/* initial */
+#define	IEEE80211_INACT_AUTH	(180/IEEE80211_INACT_WAIT)	/* associated but not authorized */
+#define	IEEE80211_INACT_RUN	(300/IEEE80211_INACT_WAIT)	/* authorized */
+#define	IEEE80211_INACT_PROBE	(30/IEEE80211_INACT_WAIT)	/* probe */
+#define	IEEE80211_INACT_SCAN	(300/IEEE80211_INACT_WAIT)	/* scanned */
 
-enum ieee80211_state {
-	IEEE80211_S_INIT	= 0,	/* default state */
-	IEEE80211_S_SCAN	= 1,	/* scanning */
-	IEEE80211_S_AUTH	= 2,	/* try to authenticate */
-	IEEE80211_S_ASSOC	= 3,	/* try to assoc */
-	IEEE80211_S_CAC		= 4,	/* doing channel availability check */
-	IEEE80211_S_RUN		= 5,	/* operational (e.g. associated) */
-	IEEE80211_S_CSA		= 6,	/* channel switch announce pending */
-	IEEE80211_S_SLEEP	= 7,	/* power save */
+#define	IEEE80211_TRANS_WAIT 	2		/* mgt frame tx timer (secs) */
+
+/* threshold for aging overlapping non-ERP bss */
+#define	IEEE80211_NONERP_PRESENT_AGE	msecs_to_ticks(60*1000)
+
+#define	IEEE80211_NODE_HASHSIZE	32		/* NB: hash size must be pow2 */
+/* simple hash is enough for variation of macaddr */
+#define	IEEE80211_NODE_HASH(ic, addr)	\
+	(((const uint8_t *)(addr))[IEEE80211_ADDR_LEN - 1] % \
+		IEEE80211_NODE_HASHSIZE)
+
+struct ieee80211_node_table;
+struct ieee80211com;
+struct ieee80211vap;
+struct ieee80211_scanparams;
+
+/*
+ * Information element (IE) ``blob''.  We use this structure
+ * to capture management frame payloads that need to be
+ * retained.  Information elements within the payload that
+ * we need to consult have references recorded.
+ */
+struct ieee80211_ies {
+	/* the following are either NULL or point within data */
+	uint8_t	*wpa_ie;	/* captured WPA ie */
+	uint8_t	*rsn_ie;	/* captured RSN ie */
+	uint8_t	*wme_ie;	/* captured WME ie */
+	uint8_t	*ath_ie;	/* captured Atheros ie */
+	uint8_t	*htcap_ie;	/* captured HTCAP ie */
+	uint8_t	*htinfo_ie;	/* captured HTINFO ie */
+	uint8_t	*tdma_ie;	/* captured TDMA ie */
+	uint8_t *meshid_ie;	/* captured MESH ID ie */
+	uint8_t	*vhtcap_ie;	/* captured VHTCAP ie */
+	uint8_t	*vhtopmode_ie;	/* captured VHTOPMODE ie */
+	uint8_t	*vhtpwrenv_ie;	/* captured VHTPWRENV ie */
+	uint8_t	*apchanrep_ie;	/* captured APCHANREP ie */
+	uint8_t	*bssload_ie;	/* captured BSSLOAD ie */
+	uint8_t	*spare[4];
+	/* NB: these must be the last members of this structure */
+	uint8_t	*data;		/* frame data > 802.11 header */
+	int	len;		/* data size in bytes */
 };
-#define	IEEE80211_S_MAX		(IEEE80211_S_SLEEP+1)
-
-#define	IEEE80211_SEND_MGMT(_ni,_type,_arg) \
-	((*(_ni)->ni_ic->ic_send_mgmt)(_ni, _type, _arg))
-
-extern	const char *mgt_subtype_name[];
-extern	const char *ctl_subtype_name[];
-extern	const char *ieee80211_phymode_name[IEEE80211_MODE_MAX];
-extern	const int ieee80211_opcap[IEEE80211_OPMODE_MAX];
-
-static __inline const char *
-ieee80211_mgt_subtype_name(uint8_t subtype)
-{
-	return mgt_subtype_name[(subtype & IEEE80211_FC0_SUBTYPE_MASK) >>
-		   IEEE80211_FC0_SUBTYPE_SHIFT];
-}
-
-static __inline const char *
-ieee80211_ctl_subtype_name(uint8_t subtype)
-{
-	return ctl_subtype_name[(subtype & IEEE80211_FC0_SUBTYPE_MASK) >>
-		   IEEE80211_FC0_SUBTYPE_SHIFT];
-}
-
-const char *ieee80211_reason_to_string(uint16_t);
-
-void	ieee80211_proto_attach(struct ieee80211com *);
-void	ieee80211_proto_detach(struct ieee80211com *);
-void	ieee80211_proto_vattach(struct ieee80211vap *);
-void	ieee80211_proto_vdetach(struct ieee80211vap *);
-
-void	ieee80211_promisc(struct ieee80211vap *, bool);
-void	ieee80211_allmulti(struct ieee80211vap *, bool);
-void	ieee80211_syncflag(struct ieee80211vap *, int flag);
-void	ieee80211_syncflag_ht(struct ieee80211vap *, int flag);
-void	ieee80211_syncflag_vht(struct ieee80211vap *, int flag);
-void	ieee80211_syncflag_ext(struct ieee80211vap *, int flag);
-
-#define	ieee80211_input(ni, m, rssi, nf) \
-	((ni)->ni_vap->iv_input(ni, m, NULL, rssi, nf))
-int	ieee80211_input_all(struct ieee80211com *, struct mbuf *, int, int);
-
-int	ieee80211_input_mimo(struct ieee80211_node *, struct mbuf *);
-int	ieee80211_input_mimo_all(struct ieee80211com *, struct mbuf *);
-
-struct ieee80211_bpf_params;
-int	ieee80211_mgmt_output(struct ieee80211_node *, struct mbuf *, int,
-		struct ieee80211_bpf_params *);
-int	ieee80211_raw_xmit(struct ieee80211_node *, struct mbuf *,
-		const struct ieee80211_bpf_params *);
-int	ieee80211_output(struct ifnet *, struct mbuf *,
-               const struct sockaddr *, struct route *ro);
-int	ieee80211_vap_pkt_send_dest(struct ieee80211vap *, struct mbuf *,
-		struct ieee80211_node *);
-int	ieee80211_raw_output(struct ieee80211vap *, struct ieee80211_node *,
-		struct mbuf *, const struct ieee80211_bpf_params *);
-void	ieee80211_send_setup(struct ieee80211_node *, struct mbuf *, int, int,
-        const uint8_t [IEEE80211_ADDR_LEN], const uint8_t [IEEE80211_ADDR_LEN],
-        const uint8_t [IEEE80211_ADDR_LEN]);
-int	ieee80211_vap_transmit(struct ifnet *ifp, struct mbuf *m);
-void	ieee80211_vap_qflush(struct ifnet *ifp);
-int	ieee80211_send_nulldata(struct ieee80211_node *);
-int	ieee80211_classify(struct ieee80211_node *, struct mbuf *m);
-struct mbuf *ieee80211_mbuf_adjust(struct ieee80211vap *, int,
-		struct ieee80211_key *, struct mbuf *);
-struct mbuf *ieee80211_encap(struct ieee80211vap *, struct ieee80211_node *,
-		struct mbuf *);
-void	ieee80211_free_mbuf(struct mbuf *);
-int	ieee80211_send_mgmt(struct ieee80211_node *, int, int);
-struct ieee80211_appie;
-int	ieee80211_probereq_ie(struct ieee80211vap *, struct ieee80211com *,
-		uint8_t **, uint32_t *, const uint8_t *, size_t, bool);
-int	ieee80211_send_probereq(struct ieee80211_node *ni,
-		const uint8_t sa[IEEE80211_ADDR_LEN],
-		const uint8_t da[IEEE80211_ADDR_LEN],
-		const uint8_t bssid[IEEE80211_ADDR_LEN],
-		const uint8_t *ssid, size_t ssidlen);
-struct mbuf *	ieee80211_ff_encap1(struct ieee80211vap *, struct mbuf *,
-		const struct ether_header *);
-void	ieee80211_tx_complete(struct ieee80211_node *,
-		struct mbuf *, int);
 
 /*
- * The formation of ProbeResponse frames requires guidance to
- * deal with legacy clients.  When the client is identified as
- * "legacy 11b" ieee80211_send_proberesp is passed this token.
+ * 802.11s (Mesh) Peer Link FSM state.
  */
-#define	IEEE80211_SEND_LEGACY_11B	0x1	/* legacy 11b client */
-#define	IEEE80211_SEND_LEGACY_11	0x2	/* other legacy client */
-#define	IEEE80211_SEND_LEGACY		0x3	/* any legacy client */
-struct mbuf *ieee80211_alloc_proberesp(struct ieee80211_node *, int);
-int	ieee80211_send_proberesp(struct ieee80211vap *,
-		const uint8_t da[IEEE80211_ADDR_LEN], int);
-struct mbuf *ieee80211_alloc_rts(struct ieee80211com *ic,
-		const uint8_t [IEEE80211_ADDR_LEN],
-		const uint8_t [IEEE80211_ADDR_LEN], uint16_t);
-struct mbuf *ieee80211_alloc_cts(struct ieee80211com *,
-		const uint8_t [IEEE80211_ADDR_LEN], uint16_t);
-struct mbuf *ieee80211_alloc_prot(struct ieee80211_node *,
-		const struct mbuf *, uint8_t, int);
+enum ieee80211_mesh_mlstate {
+	IEEE80211_NODE_MESH_IDLE	= 0,
+	IEEE80211_NODE_MESH_OPENSNT	= 1,	/* open frame sent */
+	IEEE80211_NODE_MESH_OPENRCV	= 2,	/* open frame received */
+	IEEE80211_NODE_MESH_CONFIRMRCV	= 3,	/* confirm frame received */
+	IEEE80211_NODE_MESH_ESTABLISHED	= 4,	/* link established */
+	IEEE80211_NODE_MESH_HOLDING	= 5,	/* link closing */
+};
+#define	IEEE80211_MESH_MLSTATE_BITS \
+	"\20\1IDLE\2OPENSNT\2OPENRCV\3CONFIRMRCV\4ESTABLISHED\5HOLDING"
 
-uint8_t *ieee80211_add_rates(uint8_t *, const struct ieee80211_rateset *);
-uint8_t *ieee80211_add_xrates(uint8_t *, const struct ieee80211_rateset *);
-uint8_t *ieee80211_add_ssid(uint8_t *, const uint8_t *, u_int);
-uint8_t *ieee80211_add_wpa(uint8_t *, const struct ieee80211vap *);
-uint8_t *ieee80211_add_rsn(uint8_t *, const struct ieee80211vap *);
-uint8_t *ieee80211_add_qos(uint8_t *, const struct ieee80211_node *);
-uint16_t ieee80211_getcapinfo(struct ieee80211vap *,
+/*
+ * Node specific information.  Note that drivers are expected
+ * to derive from this structure to add device-specific per-node
+ * state.  This is done by overriding the ic_node_* methods in
+ * the ieee80211com structure.
+ */
+struct ieee80211_node {
+	struct ieee80211vap	*ni_vap;	/* associated vap */
+	struct ieee80211com	*ni_ic;		/* copy from vap to save deref*/
+	struct ieee80211_node_table *ni_table;	/* NB: may be NULL */
+	TAILQ_ENTRY(ieee80211_node) ni_list;	/* list of all nodes */
+	LIST_ENTRY(ieee80211_node) ni_hash;	/* hash collision list */
+	u_int			ni_refcnt;	/* count of held references */
+	u_int			ni_flags;
+#define	IEEE80211_NODE_AUTH	0x000001	/* authorized for data */
+#define	IEEE80211_NODE_QOS	0x000002	/* QoS enabled */
+#define	IEEE80211_NODE_ERP	0x000004	/* ERP enabled */
+/* NB: this must have the same value as IEEE80211_FC1_PWR_MGT */
+#define	IEEE80211_NODE_PWR_MGT	0x000010	/* power save mode enabled */
+#define	IEEE80211_NODE_AREF	0x000020	/* authentication ref held */
+#define	IEEE80211_NODE_HT	0x000040	/* HT enabled */
+#define	IEEE80211_NODE_HTCOMPAT	0x000080	/* HT setup w/ vendor OUI's */
+#define	IEEE80211_NODE_WPS	0x000100	/* WPS association */
+#define	IEEE80211_NODE_TSN	0x000200	/* TSN association */
+#define	IEEE80211_NODE_AMPDU_RX	0x000400	/* AMPDU rx enabled */
+#define	IEEE80211_NODE_AMPDU_TX	0x000800	/* AMPDU tx enabled */
+#define	IEEE80211_NODE_MIMO_PS	0x001000	/* MIMO power save enabled */
+#define	IEEE80211_NODE_MIMO_RTS	0x002000	/* send RTS in MIMO PS */
+#define	IEEE80211_NODE_RIFS	0x004000	/* RIFS enabled */
+#define	IEEE80211_NODE_SGI20	0x008000	/* Short GI in HT20 enabled */
+#define	IEEE80211_NODE_SGI40	0x010000	/* Short GI in HT40 enabled */
+#define	IEEE80211_NODE_ASSOCID	0x020000	/* xmit requires associd */
+#define	IEEE80211_NODE_AMSDU_RX	0x040000	/* AMSDU rx enabled */
+#define	IEEE80211_NODE_AMSDU_TX	0x080000	/* AMSDU tx enabled */
+#define	IEEE80211_NODE_VHT	0x100000	/* VHT enabled */
+#define	IEEE80211_NODE_LDPC	0x200000	/* LDPC enabled */
+#define	IEEE80211_NODE_UAPSD	0x400000	/* U-APSD power save enabled */
+	uint16_t		ni_associd;	/* association ID */
+	uint16_t		ni_vlan;	/* vlan tag */
+	uint16_t		ni_txpower;	/* current transmit power */
+	uint8_t			ni_authmode;	/* authentication algorithm */
+	uint8_t			ni_ath_flags;	/* Atheros feature flags */
+	/* NB: These must have the same values as IEEE80211_ATHC_* */
+#define IEEE80211_NODE_TURBOP	0x0001		/* Turbo prime enable */
+#define IEEE80211_NODE_COMP	0x0002		/* Compresssion enable */
+#define IEEE80211_NODE_FF	0x0004          /* Fast Frame capable */
+#define IEEE80211_NODE_XR	0x0008		/* Atheros WME enable */
+#define IEEE80211_NODE_AR	0x0010		/* AR capable */
+#define IEEE80211_NODE_BOOST	0x0080		/* Dynamic Turbo boosted */
+	uint16_t		ni_ath_defkeyix;/* Atheros def key index */
+	const struct ieee80211_txparam *ni_txparms;
+	uint32_t		ni_jointime;	/* time of join (secs) */
+	uint32_t		*ni_challenge;	/* shared-key challenge */
+	struct ieee80211_ies	ni_ies;		/* captured ie's */
+						/* tx seq per-tid */
+	ieee80211_seq		ni_txseqs[IEEE80211_TID_SIZE];
+						/* rx seq previous per-tid*/
+	ieee80211_seq		ni_rxseqs[IEEE80211_TID_SIZE];
+	uint32_t		ni_rxfragstamp;	/* time stamp of last rx frag */
+	struct mbuf		*ni_rxfrag[3];	/* rx frag reassembly */
+	struct ieee80211_key	ni_ucastkey;	/* unicast key */
+
+	/* hardware */
+	uint32_t		ni_avgrssi;	/* recv ssi state */
+	int8_t			ni_noise;	/* noise floor */
+
+	/* mimo statistics */
+	uint32_t		ni_mimo_rssi_ctl[IEEE80211_MAX_CHAINS];
+	uint32_t		ni_mimo_rssi_ext[IEEE80211_MAX_CHAINS];
+	uint8_t			ni_mimo_noise_ctl[IEEE80211_MAX_CHAINS];
+	uint8_t			ni_mimo_noise_ext[IEEE80211_MAX_CHAINS];
+	uint8_t			ni_mimo_chains;
+
+	/* header */
+	uint8_t			ni_macaddr[IEEE80211_ADDR_LEN];
+	uint8_t			ni_bssid[IEEE80211_ADDR_LEN];
+
+	/* beacon, probe response */
+	union {
+		uint8_t		data[8];
+		u_int64_t	tsf;
+	} ni_tstamp;				/* from last rcv'd beacon */
+	uint16_t		ni_intval;	/* beacon interval */
+	uint16_t		ni_capinfo;	/* capabilities */
+	uint8_t			ni_esslen;
+	uint8_t			ni_essid[IEEE80211_NWID_LEN];
+	struct ieee80211_rateset ni_rates;	/* negotiated rate set */
+	struct ieee80211_channel *ni_chan;
+	uint16_t		ni_fhdwell;	/* FH only */
+	uint8_t			ni_fhindex;	/* FH only */
+	uint16_t		ni_erp;		/* ERP from beacon/probe resp */
+	uint16_t		ni_timoff;	/* byte offset to TIM ie */
+	uint8_t			ni_dtim_period;	/* DTIM period */
+	uint8_t			ni_dtim_count;	/* DTIM count for last bcn */
+
+	/* 11s state */
+	uint8_t			ni_meshidlen;
+	uint8_t			ni_meshid[IEEE80211_MESHID_LEN];
+	enum ieee80211_mesh_mlstate ni_mlstate;	/* peering management state */
+	uint16_t		ni_mllid;	/* link local ID */
+	uint16_t		ni_mlpid;	/* link peer ID */
+	struct callout		ni_mltimer;	/* link mesh timer */
+	uint8_t			ni_mlrcnt;	/* link mesh retry counter */
+	uint8_t			ni_mltval;	/* link mesh timer value */
+	struct callout		ni_mlhtimer;	/* link mesh backoff timer */
+	uint8_t			ni_mlhcnt;	/* link mesh holding counter */
+
+	/* 11n state */
+	uint16_t		ni_htcap;	/* HT capabilities */
+	uint8_t			ni_htparam;	/* HT params */
+	uint8_t			ni_htctlchan;	/* HT control channel */
+	uint8_t			ni_ht2ndchan;	/* HT 2nd channel */
+	uint8_t			ni_htopmode;	/* HT operating mode */
+	uint8_t			ni_htstbc;	/* HT */
+	uint8_t			ni_chw;		/* negotiated channel width */
+	struct ieee80211_htrateset ni_htrates;	/* negotiated ht rate set */
+	struct ieee80211_tx_ampdu ni_tx_ampdu[WME_NUM_TID];
+	struct ieee80211_rx_ampdu ni_rx_ampdu[WME_NUM_TID];
+
+	/* VHT state */
+	uint32_t		ni_vhtcap;
+	uint16_t		ni_vht_basicmcs;
+	uint16_t		ni_vht_pad2;
+	struct ieee80211_vht_mcs_info	ni_vht_mcsinfo;
+	uint8_t			ni_vht_chan1;	/* 20/40/80/160 - VHT chan1 */
+	uint8_t			ni_vht_chan2;	/* 80+80 - VHT chan2 */
+	uint8_t			ni_vht_chanwidth;	/* IEEE80211_VHT_CHANWIDTH_ */
+	uint8_t			ni_vht_pad1;
+	uint32_t		ni_vht_spare[8];
+
+	/* fast-frames state */
+	struct mbuf *		ni_tx_superg[WME_NUM_TID];
+
+	/* others */
+	short			ni_inact;	/* inactivity mark count */
+	short			ni_inact_reload;/* inactivity reload value */
+	int			ni_txrate;	/* legacy rate/MCS */
+	struct ieee80211_psq	ni_psq;		/* power save queue */
+	struct ieee80211_nodestats ni_stats;	/* per-node statistics */
+
+	struct ieee80211vap	*ni_wdsvap;	/* associated WDS vap */
+	void			*ni_rctls;	/* private ratectl state */
+
+	/* quiet time IE state for the given node */
+	uint32_t		ni_quiet_ie_set;	/* Quiet time IE was seen */
+	struct			ieee80211_quiet_ie ni_quiet_ie;	/* last seen quiet IE */
+
+	/* U-APSD */
+	uint8_t			ni_uapsd;	/* U-APSD per-node flags matching WMM STA QoS Info field */
+
+	void			*ni_drv_data;	/* driver specific */
+
+	uint64_t		ni_spare[3];
+};
+MALLOC_DECLARE(M_80211_NODE);
+MALLOC_DECLARE(M_80211_NODE_IE);
+
+#define	IEEE80211_NODE_ATH	(IEEE80211_NODE_FF | IEEE80211_NODE_TURBOP)
+#define	IEEE80211_NODE_AMPDU \
+	(IEEE80211_NODE_AMPDU_RX | IEEE80211_NODE_AMPDU_TX)
+#define	IEEE80211_NODE_AMSDU \
+	(IEEE80211_NODE_AMSDU_RX | IEEE80211_NODE_AMSDU_TX)
+#define	IEEE80211_NODE_HT_ALL \
+	(IEEE80211_NODE_HT | IEEE80211_NODE_HTCOMPAT | \
+	 IEEE80211_NODE_AMPDU | IEEE80211_NODE_AMSDU | \
+	 IEEE80211_NODE_MIMO_PS | IEEE80211_NODE_MIMO_RTS | \
+	 IEEE80211_NODE_RIFS | IEEE80211_NODE_SGI20 | IEEE80211_NODE_SGI40)
+
+#define	IEEE80211_NODE_BITS \
+	"\20\1AUTH\2QOS\3ERP\5PWR_MGT\6AREF\7HT\10HTCOMPAT\11WPS\12TSN" \
+	"\13AMPDU_RX\14AMPDU_TX\15MIMO_PS\16MIMO_RTS\17RIFS\20SGI20\21SGI40" \
+	"\22ASSOCID"
+
+#define	IEEE80211_NODE_AID(ni)	IEEE80211_AID(ni->ni_associd)
+
+#define	IEEE80211_NODE_STAT(ni,stat)	(ni->ni_stats.ns_##stat++)
+#define	IEEE80211_NODE_STAT_ADD(ni,stat,v)	(ni->ni_stats.ns_##stat += v)
+#define	IEEE80211_NODE_STAT_SET(ni,stat,v)	(ni->ni_stats.ns_##stat = v)
+
+/*
+ * Filtered rssi calculation support.  The receive rssi is maintained
+ * as an average over the last 10 frames received using a low pass filter
+ * (all frames for now, possibly need to be more selective).  Calculations
+ * are designed such that a good compiler can optimize them.  The avg
+ * rssi state should be initialized to IEEE80211_RSSI_DUMMY_MARKER and
+ * each sample incorporated with IEEE80211_RSSI_LPF.  Use IEEE80211_RSSI_GET
+ * to extract the current value.
+ *
+ * Note that we assume rssi data are in the range [-127..127] and we
+ * discard values <-20.  This is consistent with assumptions throughout
+ * net80211 that signal strength data are in .5 dBm units relative to
+ * the current noise floor (linear, not log).
+ */
+#define IEEE80211_RSSI_LPF_LEN		10
+#define	IEEE80211_RSSI_DUMMY_MARKER	127
+/* NB: pow2 to optimize out * and / */
+#define	IEEE80211_RSSI_EP_MULTIPLIER	(1<<7)
+#define IEEE80211_RSSI_IN(x)		((x) * IEEE80211_RSSI_EP_MULTIPLIER)
+#define _IEEE80211_RSSI_LPF(x, y, len) \
+    (((x) != IEEE80211_RSSI_DUMMY_MARKER) ? (((x) * ((len) - 1) + (y)) / (len)) : (y))
+#define IEEE80211_RSSI_LPF(x, y) do {					\
+    if ((y) >= -20) {							\
+    	x = _IEEE80211_RSSI_LPF((x), IEEE80211_RSSI_IN((y)), 		\
+		IEEE80211_RSSI_LPF_LEN);				\
+    }									\
+} while (0)
+#define	IEEE80211_RSSI_EP_RND(x, mul) \
+	((((x) % (mul)) >= ((mul)/2)) ? ((x) + ((mul) - 1)) / (mul) : (x)/(mul))
+#define	IEEE80211_RSSI_GET(x) \
+	IEEE80211_RSSI_EP_RND(x, IEEE80211_RSSI_EP_MULTIPLIER)
+
+static __inline struct ieee80211_node *
+ieee80211_ref_node(struct ieee80211_node *ni)
+{
+	ieee80211_node_incref(ni);
+	return ni;
+}
+
+static __inline void
+ieee80211_unref_node(struct ieee80211_node **ni)
+{
+	ieee80211_node_decref(*ni);
+	*ni = NULL;			/* guard against use */
+}
+
+void	ieee80211_node_attach(struct ieee80211com *);
+void	ieee80211_node_lateattach(struct ieee80211com *);
+void	ieee80211_node_detach(struct ieee80211com *);
+void	ieee80211_node_vattach(struct ieee80211vap *);
+void	ieee80211_node_latevattach(struct ieee80211vap *);
+void	ieee80211_node_vdetach(struct ieee80211vap *);
+
+static __inline int
+ieee80211_node_is_authorized(const struct ieee80211_node *ni)
+{
+	return (ni->ni_flags & IEEE80211_NODE_AUTH);
+}
+
+void	ieee80211_node_authorize(struct ieee80211_node *);
+void	ieee80211_node_unauthorize(struct ieee80211_node *);
+
+void	ieee80211_node_setuptxparms(struct ieee80211_node *);
+void	ieee80211_node_set_chan(struct ieee80211_node *,
 		struct ieee80211_channel *);
-struct ieee80211_wme_state;
-uint8_t * ieee80211_add_wme_info(uint8_t *frm, struct ieee80211_wme_state *wme,
-	    struct ieee80211_node *ni);
+void	ieee80211_create_ibss(struct ieee80211vap*, struct ieee80211_channel *);
+void	ieee80211_reset_bss(struct ieee80211vap *);
+void	ieee80211_sync_curchan(struct ieee80211com *);
+void	ieee80211_setupcurchan(struct ieee80211com *,
+	    struct ieee80211_channel *);
+void	ieee80211_setcurchan(struct ieee80211com *, struct ieee80211_channel *);
+void	ieee80211_update_chw(struct ieee80211com *);
+int	ieee80211_ibss_merge_check(struct ieee80211_node *);
+int	ieee80211_ibss_node_check_new(struct ieee80211_node *ni,
+	    const struct ieee80211_scanparams *);
+int	ieee80211_ibss_merge(struct ieee80211_node *);
+struct ieee80211_scan_entry;
+int	ieee80211_sta_join(struct ieee80211vap *, struct ieee80211_channel *,
+		const struct ieee80211_scan_entry *);
+void	ieee80211_sta_leave(struct ieee80211_node *);
+void	ieee80211_node_deauth(struct ieee80211_node *, int);
 
-void	ieee80211_vap_reset_erp(struct ieee80211vap *);
-void	ieee80211_reset_erp(struct ieee80211com *);
-void	ieee80211_vap_set_shortslottime(struct ieee80211vap *, int onoff);
-int	ieee80211_iserp_rateset(const struct ieee80211_rateset *);
-void	ieee80211_setbasicrates(struct ieee80211_rateset *,
-		enum ieee80211_phymode);
-void	ieee80211_addbasicrates(struct ieee80211_rateset *,
-		enum ieee80211_phymode);
-
-/*
- * Return the size of the 802.11 header for a management or data frame.
- */
-static __inline int
-ieee80211_hdrsize(const void *data)
-{
-	const struct ieee80211_frame *wh = data;
-	int size = sizeof(struct ieee80211_frame);
-
-	/* NB: we don't handle control frames */
-	KASSERT((wh->i_fc[0]&IEEE80211_FC0_TYPE_MASK) != IEEE80211_FC0_TYPE_CTL,
-		("%s: control frame", __func__));
-	if (IEEE80211_IS_DSTODS(wh))
-		size += IEEE80211_ADDR_LEN;
-	if (IEEE80211_QOS_HAS_SEQ(wh))
-		size += sizeof(uint16_t);
-	return size;
-}
+int	ieee80211_ies_init(struct ieee80211_ies *, const uint8_t *, int);
+void	ieee80211_ies_cleanup(struct ieee80211_ies *);
+void	ieee80211_ies_expand(struct ieee80211_ies *);
+#define	ieee80211_ies_setie(_ies, _ie, _off) do {		\
+	(_ies)._ie = (_ies).data + (_off);			\
+} while (0)
 
 /*
- * Like ieee80211_hdrsize, but handles any type of frame.
+ * Table of ieee80211_node instances.  Each ieee80211com
+ * has one that holds association stations (when operating
+ * as an ap) or neighbors (in ibss mode).
+ *
+ * XXX embed this in ieee80211com instead of indirect?
  */
-static __inline int
-ieee80211_anyhdrsize(const void *data)
-{
-	const struct ieee80211_frame *wh = data;
-
-	if ((wh->i_fc[0]&IEEE80211_FC0_TYPE_MASK) == IEEE80211_FC0_TYPE_CTL) {
-		switch (wh->i_fc[0] & IEEE80211_FC0_SUBTYPE_MASK) {
-		case IEEE80211_FC0_SUBTYPE_CTS:
-		case IEEE80211_FC0_SUBTYPE_ACK:
-			return sizeof(struct ieee80211_frame_ack);
-		case IEEE80211_FC0_SUBTYPE_BAR:
-			return sizeof(struct ieee80211_frame_bar);
-		}
-		return sizeof(struct ieee80211_frame_min);
-	} else
-		return ieee80211_hdrsize(data);
-}
-
-/*
- * Template for an in-kernel authenticator.  Authenticators
- * register with the protocol code and are typically loaded
- * as separate modules as needed.  One special authenticator
- * is xauth; it intercepts requests so that protocols like
- * WPA can be handled in user space.
- */
-struct ieee80211_authenticator {
-	const char *ia_name;		/* printable name */
-	int	(*ia_attach)(struct ieee80211vap *);
-	void	(*ia_detach)(struct ieee80211vap *);
-	void	(*ia_node_join)(struct ieee80211_node *);
-	void	(*ia_node_leave)(struct ieee80211_node *);
-};
-void	ieee80211_authenticator_register(int type,
-		const struct ieee80211_authenticator *);
-void	ieee80211_authenticator_unregister(int type);
-const struct ieee80211_authenticator *ieee80211_authenticator_get(int auth);
-
-struct ieee80211req;
-/*
- * Template for an MAC ACL policy module.  Such modules
- * register with the protocol code and are passed the sender's
- * address of each received auth frame for validation.
- */
-struct ieee80211_aclator {
-	const char *iac_name;		/* printable name */
-	int	(*iac_attach)(struct ieee80211vap *);
-	void	(*iac_detach)(struct ieee80211vap *);
-	int	(*iac_check)(struct ieee80211vap *,
-			const struct ieee80211_frame *wh);
-	int	(*iac_add)(struct ieee80211vap *,
-			const uint8_t mac[IEEE80211_ADDR_LEN]);
-	int	(*iac_remove)(struct ieee80211vap *,
-			const uint8_t mac[IEEE80211_ADDR_LEN]);
-	int	(*iac_flush)(struct ieee80211vap *);
-	int	(*iac_setpolicy)(struct ieee80211vap *, int);
-	int	(*iac_getpolicy)(struct ieee80211vap *);
-	int	(*iac_setioctl)(struct ieee80211vap *, struct ieee80211req *);
-	int	(*iac_getioctl)(struct ieee80211vap *, struct ieee80211req *);
-};
-void	ieee80211_aclator_register(const struct ieee80211_aclator *);
-void	ieee80211_aclator_unregister(const struct ieee80211_aclator *);
-const struct ieee80211_aclator *ieee80211_aclator_get(const char *name);
-
-/* flags for ieee80211_fix_rate() */
-#define	IEEE80211_F_DOSORT	0x00000001	/* sort rate list */
-#define	IEEE80211_F_DOFRATE	0x00000002	/* use fixed legacy rate */
-#define	IEEE80211_F_DONEGO	0x00000004	/* calc negotiated rate */
-#define	IEEE80211_F_DODEL	0x00000008	/* delete ignore rate */
-#define	IEEE80211_F_DOBRS	0x00000010	/* check basic rate set */
-#define	IEEE80211_F_JOIN	0x00000020	/* sta joining our bss */
-#define	IEEE80211_F_DOFMCS	0x00000040	/* use fixed HT rate */
-int	ieee80211_fix_rate(struct ieee80211_node *,
-		struct ieee80211_rateset *, int);
-
-/*
- * WME/WMM support.
- */
-struct wmeParams {
-	uint8_t		wmep_acm;
-	uint8_t		wmep_aifsn;
-	uint8_t		wmep_logcwmin;		/* log2(cwmin) */
-	uint8_t		wmep_logcwmax;		/* log2(cwmax) */
-	uint8_t		wmep_txopLimit;
-	uint8_t		wmep_noackPolicy;	/* 0 (ack), 1 (no ack) */
-};
-#define	IEEE80211_TXOP_TO_US(_txop)	((_txop)<<5)
-#define	IEEE80211_US_TO_TXOP(_us)	((_us)>>5)
-
-struct chanAccParams {
-	uint8_t		cap_info;		/* version of the current set */
-	struct wmeParams cap_wmeParams[WME_NUM_AC];
+struct ieee80211_node_table {
+	struct ieee80211com	*nt_ic;		/* back reference */
+	ieee80211_node_lock_t	nt_nodelock;	/* on node table */
+	TAILQ_HEAD(, ieee80211_node) nt_node;	/* information of all nodes */
+	LIST_HEAD(, ieee80211_node) nt_hash[IEEE80211_NODE_HASHSIZE];
+	int			nt_count;	/* number of nodes */
+	struct ieee80211_node	**nt_keyixmap;	/* key ix -> node map */
+	int			nt_keyixmax;	/* keyixmap size */
+	const char		*nt_name;	/* table name for debug msgs */
+	int			nt_inact_init;	/* initial node inact setting */
 };
 
-struct ieee80211_wme_state {
-	u_int	wme_flags;
-#define	WME_F_AGGRMODE	0x00000001	/* STATUS: WME aggressive mode */
-	u_int	wme_hipri_traffic;	/* VI/VO frames in beacon interval */
-	u_int	wme_hipri_switch_thresh;/* aggressive mode switch thresh */
-	u_int	wme_hipri_switch_hysteresis;/* aggressive mode switch hysteresis */
+struct ieee80211_node *ieee80211_alloc_node(struct ieee80211_node_table *,
+		struct ieee80211vap *,
+		const uint8_t macaddr[IEEE80211_ADDR_LEN]);
+struct ieee80211_node *ieee80211_tmp_node(struct ieee80211vap *,
+		const uint8_t macaddr[IEEE80211_ADDR_LEN]);
+struct ieee80211_node *ieee80211_dup_bss(struct ieee80211vap *,
+		const uint8_t macaddr[IEEE80211_ADDR_LEN]);
+struct ieee80211_node *ieee80211_node_create_wds(struct ieee80211vap *,
+		const uint8_t bssid[IEEE80211_ADDR_LEN],
+		struct ieee80211_channel *);
 
-	struct wmeParams wme_params[WME_NUM_AC]; /* from assoc resp for each AC */
-	struct chanAccParams wme_wmeChanParams;	/* WME params applied to self */
-	struct chanAccParams wme_wmeBssChanParams;/* WME params bcast to stations */
-	struct chanAccParams wme_chanParams;	/* params applied to self */
-	struct chanAccParams wme_bssChanParams;	/* params bcast to stations */
+/* These functions are taking __func__, __LINE__ for IEEE80211_DEBUG_REFCNT */
+void	_ieee80211_free_node(struct ieee80211_node *,
+		const char *func, int line);
+struct ieee80211_node *_ieee80211_find_node_locked(
+		struct ieee80211_node_table *,
+		const uint8_t macaddr[IEEE80211_ADDR_LEN],
+		const char *func, int line);
+struct ieee80211_node *_ieee80211_find_node(struct ieee80211_node_table *,
+		const uint8_t macaddr[IEEE80211_ADDR_LEN],
+		const char *func, int line);
+struct ieee80211_node *_ieee80211_find_vap_node_locked(
+		struct ieee80211_node_table *,
+		const struct ieee80211vap *vap,
+		const uint8_t macaddr[IEEE80211_ADDR_LEN],
+		const char *func, int line);
+struct ieee80211_node *_ieee80211_find_vap_node(
+		struct ieee80211_node_table *,
+		const struct ieee80211vap *vap,
+		const uint8_t macaddr[IEEE80211_ADDR_LEN],
+		const char *func, int line);
+struct ieee80211_node *_ieee80211_find_rxnode(struct ieee80211com *,
+		const struct ieee80211_frame_min *,
+		const char *func, int line);
+struct ieee80211_node *_ieee80211_find_rxnode_withkey(
+		struct ieee80211com *,
+		const struct ieee80211_frame_min *, uint16_t keyix,
+		const char *func, int line);
+struct ieee80211_node *_ieee80211_find_txnode(struct ieee80211vap *,
+		const uint8_t macaddr[IEEE80211_ADDR_LEN],
+		const char *func, int line);
+#define	ieee80211_free_node(ni) \
+	_ieee80211_free_node(ni, __func__, __LINE__)
+#define	ieee80211_find_node_locked(nt, mac) \
+	_ieee80211_find_node_locked(nt, mac, __func__, __LINE__)
+#define	ieee80211_find_node(nt, mac) \
+	_ieee80211_find_node(nt, mac, __func__, __LINE__)
+#define	ieee80211_find_vap_node_locked(nt, vap, mac) \
+	_ieee80211_find_vap_node_locked(nt, vap, mac, __func__, __LINE__)
+#define	ieee80211_find_vap_node(nt, vap, mac) \
+	_ieee80211_find_vap_node(nt, vap, mac, __func__, __LINE__)
+#define	ieee80211_find_rxnode(ic, wh) \
+	_ieee80211_find_rxnode(ic, wh, __func__, __LINE__)
+#define	ieee80211_find_rxnode_withkey(ic, wh, keyix) \
+	_ieee80211_find_rxnode_withkey(ic, wh, keyix, __func__, __LINE__)
+#define	ieee80211_find_txnode(vap, mac) \
+	_ieee80211_find_txnode(vap, mac, __func__, __LINE__)
 
-	int	(*wme_update)(struct ieee80211com *);
-};
+int	ieee80211_node_delucastkey(struct ieee80211_node *);
+void	ieee80211_node_timeout(void *arg);
 
-void	ieee80211_wme_initparams(struct ieee80211vap *);
-void	ieee80211_wme_updateparams(struct ieee80211vap *);
-void	ieee80211_wme_updateparams_locked(struct ieee80211vap *);
-void	ieee80211_wme_vap_getparams(struct ieee80211vap *vap,
-	    struct chanAccParams *);
-void	ieee80211_wme_ic_getparams(struct ieee80211com *ic,
-	    struct chanAccParams *);
-int	ieee80211_wme_vap_ac_is_noack(struct ieee80211vap *vap, int ac);
-void	ieee80211_vap_update_preamble(struct ieee80211vap *vap);
-void	ieee80211_vap_update_erp_protmode(struct ieee80211vap *vap);
-void	ieee80211_vap_update_ht_protmode(struct ieee80211vap *vap);
+typedef void ieee80211_iter_func(void *, struct ieee80211_node *);
+int	ieee80211_iterate_nodes_vap(struct ieee80211_node_table *,
+		struct ieee80211vap *, ieee80211_iter_func *, void *);
+void	ieee80211_iterate_nodes(struct ieee80211_node_table *,
+		ieee80211_iter_func *, void *);
 
-/*
- * Return pointer to the QoS field from a Qos frame.
- */
-static __inline uint8_t *
-ieee80211_getqos(void *data)
-{
-	struct ieee80211_frame *wh = data;
+void	ieee80211_notify_erp_locked(struct ieee80211com *);
+void	ieee80211_dump_node(struct ieee80211_node_table *,
+		struct ieee80211_node *);
+void	ieee80211_dump_nodes(struct ieee80211_node_table *);
 
-	KASSERT(IEEE80211_QOS_HAS_SEQ(wh), ("QoS field is absent!"));
-
-	if (IEEE80211_IS_DSTODS(wh))
-		return (((struct ieee80211_qosframe_addr4 *)wh)->i_qos);
-	else
-		return (((struct ieee80211_qosframe *)wh)->i_qos);
-}
-
-/*
- * Return the WME TID from a QoS frame.  If no TID
- * is present return the index for the "non-QoS" entry.
- */
-static __inline uint8_t
-ieee80211_gettid(const struct ieee80211_frame *wh)
-{
-	uint8_t tid;
-
-	if (IEEE80211_QOS_HAS_SEQ(wh)) {
-		if (IEEE80211_IS_DSTODS(wh))
-			tid = ((const struct ieee80211_qosframe_addr4 *)wh)->
-				i_qos[0];
-		else
-			tid = ((const struct ieee80211_qosframe *)wh)->i_qos[0];
-		tid &= IEEE80211_QOS_TID;
-	} else
-		tid = IEEE80211_NONQOS_TID;
-	return tid;
-}
-
-void	ieee80211_waitfor_parent(struct ieee80211com *);
-void	ieee80211_start_locked(struct ieee80211vap *);
-void	ieee80211_init(void *);
-void	ieee80211_start_all(struct ieee80211com *);
-void	ieee80211_stop_locked(struct ieee80211vap *);
-void	ieee80211_stop(struct ieee80211vap *);
-void	ieee80211_stop_all(struct ieee80211com *);
-void	ieee80211_suspend_all(struct ieee80211com *);
-void	ieee80211_resume_all(struct ieee80211com *);
-void	ieee80211_restart_all(struct ieee80211com *);
-void	ieee80211_dturbo_switch(struct ieee80211vap *, int newflags);
-void	ieee80211_swbmiss(void *arg);
-void	ieee80211_beacon_miss(struct ieee80211com *);
-int	ieee80211_new_state(struct ieee80211vap *, enum ieee80211_state, int);
-int	ieee80211_new_state_locked(struct ieee80211vap *, enum ieee80211_state,
-		int);
-void	ieee80211_print_essid(const uint8_t *, int);
-void	ieee80211_dump_pkt(struct ieee80211com *,
-		const uint8_t *, int, int, int);
-
-extern 	const char *ieee80211_opmode_name[];
-extern	const char *ieee80211_state_name[IEEE80211_S_MAX];
-extern	const char *ieee80211_wme_acnames[];
-
-/*
- * Beacon frames constructed by ieee80211_beacon_alloc
- * have the following structure filled in so drivers
- * can update the frame later w/ minimal overhead.
- */
-struct ieee80211_beacon_offsets {
-	uint8_t		bo_flags[4];	/* update/state flags */
-	uint16_t	*bo_caps;	/* capabilities */
-	uint8_t		*bo_cfp;	/* start of CFParms element */
-	uint8_t		*bo_tim;	/* start of atim/dtim */
-	uint8_t		*bo_wme;	/* start of WME parameters */
-	uint8_t		*bo_tdma;	/* start of TDMA parameters */
-	uint8_t		*bo_tim_trailer;/* start of fixed-size trailer */
-	uint16_t	bo_tim_len;	/* atim/dtim length in bytes */
-	uint16_t	bo_tim_trailer_len;/* tim trailer length in bytes */
-	uint8_t		*bo_erp;	/* start of ERP element */
-	uint8_t		*bo_htinfo;	/* start of HT info element */
-	uint8_t		*bo_ath;	/* start of ATH parameters */
-	uint8_t		*bo_appie;	/* start of AppIE element */
-	uint16_t	bo_appie_len;	/* AppIE length in bytes */
-	uint16_t	bo_csa_trailer_len;
-	uint8_t		*bo_csa;	/* start of CSA element */
-	uint8_t		*bo_quiet;	/* start of Quiet element */
-	uint8_t		*bo_meshconf;	/* start of MESHCONF element */
-	uint8_t		*bo_vhtinfo;	/* start of VHT info element (XXX VHTCAP?) */
-	uint8_t		*bo_spare[2];
-};
-struct mbuf *ieee80211_beacon_alloc(struct ieee80211_node *);
-
-/*
- * Beacon frame updates are signaled through calls to iv_update_beacon
- * with one of the IEEE80211_BEACON_* tokens defined below.  For devices
- * that construct beacon frames on the host this can trigger a rebuild
- * or defer the processing.  For devices that offload beacon frame
- * handling this callback can be used to signal a rebuild.  The bo_flags
- * array in the ieee80211_beacon_offsets structure is intended to record
- * deferred processing requirements; ieee80211_beacon_update uses the
- * state to optimize work.  Since this structure is owned by the driver
- * and not visible to the 802.11 layer drivers must supply an iv_update_beacon
- * callback that marks the flag bits and schedules (as necessary) an update.
- */
-enum {
-	IEEE80211_BEACON_CAPS	= 0,	/* capabilities */
-	IEEE80211_BEACON_TIM	= 1,	/* DTIM/ATIM */
-	IEEE80211_BEACON_WME	= 2,
-	IEEE80211_BEACON_ERP	= 3,	/* Extended Rate Phy */
-	IEEE80211_BEACON_HTINFO	= 4,	/* HT Information */
-	IEEE80211_BEACON_APPIE	= 5,	/* Application IE's */
-	IEEE80211_BEACON_CFP	= 6,	/* CFParms */
-	IEEE80211_BEACON_CSA	= 7,	/* Channel Switch Announcement */
-	IEEE80211_BEACON_TDMA	= 9,	/* TDMA Info */
-	IEEE80211_BEACON_ATH	= 10,	/* ATH parameters */
-	IEEE80211_BEACON_MESHCONF = 11,	/* Mesh Configuration */
-	IEEE80211_BEACON_QUIET	= 12,	/* Quiet time IE */
-	IEEE80211_BEACON_VHTINFO	= 13,	/* VHT information */
-};
-int	ieee80211_beacon_update(struct ieee80211_node *,
-		struct mbuf *, int mcast);
-
-void	ieee80211_csa_startswitch(struct ieee80211com *,
-		struct ieee80211_channel *, int mode, int count);
-void	ieee80211_csa_completeswitch(struct ieee80211com *);
-void	ieee80211_csa_cancelswitch(struct ieee80211com *);
-void	ieee80211_cac_completeswitch(struct ieee80211vap *);
-
-/*
- * Notification methods called from the 802.11 state machine.
- * Note that while these are defined here, their implementation
- * is OS-specific.
- */
-void	ieee80211_notify_node_join(struct ieee80211_node *, int newassoc);
-void	ieee80211_notify_node_leave(struct ieee80211_node *);
-void	ieee80211_notify_scan_done(struct ieee80211vap *);
-void	ieee80211_notify_wds_discover(struct ieee80211_node *);
-void	ieee80211_notify_csa(struct ieee80211com *,
-		const struct ieee80211_channel *, int mode, int count);
-void	ieee80211_notify_radar(struct ieee80211com *,
-		const struct ieee80211_channel *);
-enum ieee80211_notify_cac_event {
-	IEEE80211_NOTIFY_CAC_START  = 0, /* CAC timer started */
-	IEEE80211_NOTIFY_CAC_STOP   = 1, /* CAC intentionally stopped */
-	IEEE80211_NOTIFY_CAC_RADAR  = 2, /* CAC stopped due to radar detectio */
-	IEEE80211_NOTIFY_CAC_EXPIRE = 3, /* CAC expired w/o radar */
-};
-void	ieee80211_notify_cac(struct ieee80211com *,
-		const struct ieee80211_channel *,
-		enum ieee80211_notify_cac_event);
-void	ieee80211_notify_node_deauth(struct ieee80211_node *);
-void	ieee80211_notify_node_auth(struct ieee80211_node *);
-void	ieee80211_notify_country(struct ieee80211vap *, const uint8_t [],
-		const uint8_t cc[2]);
-void	ieee80211_notify_radio(struct ieee80211com *, int);
-void	ieee80211_notify_ifnet_change(struct ieee80211vap *);
-#endif /* _NET80211_IEEE80211_PROTO_H_ */
+struct ieee80211_node *ieee80211_fakeup_adhoc_node(struct ieee80211vap *,
+		const uint8_t macaddr[IEEE80211_ADDR_LEN]);
+struct ieee80211_scanparams;
+void	ieee80211_init_neighbor(struct ieee80211_node *,
+		const struct ieee80211_frame *,
+		const struct ieee80211_scanparams *);
+struct ieee80211_node *ieee80211_add_neighbor(struct ieee80211vap *,
+		const struct ieee80211_frame *,
+		const struct ieee80211_scanparams *);
+void	ieee80211_node_join(struct ieee80211_node *,int);
+void	ieee80211_node_leave(struct ieee80211_node *);
+int8_t	ieee80211_getrssi(struct ieee80211vap *);
+void	ieee80211_getsignal(struct ieee80211vap *, int8_t *, int8_t *);
+#endif /* _NET80211_IEEE80211_NODE_H_ */
