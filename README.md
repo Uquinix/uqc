@@ -40,4 +40,3 @@ Documentation
 =============
 
 Documentation can be found on our developer site, [developer.uquinix.com](https://developer.uquinix.com)
-
