@@ -7,6 +7,8 @@ For any enquiries, contact uqc@uquinix.com.
 
 And for security-related enquiries, please encrypt your email using our [GPG key](https://developer.uquinix.com/keys/signing-key.asc) and contact security@uquinix.com.
 
+This repository is mirrored from [source.uquinix.com](https://source.uquinix.com/uqc/)
+
 UQC Source Tree
 ================
 | Directory | Description |
@@ -38,3 +40,4 @@ Documentation
 =============
 
 Documentation can be found on our developer site, [developer.uquinix.com](https://developer.uquinix.com)
+
