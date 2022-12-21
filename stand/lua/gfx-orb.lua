@@ -48,7 +48,7 @@ return {
 		},
 		requires_color = true,
 		shift = {x = 2, y = 3},
-		image = "/boot/images/freebsd-logo-rev.png",
+		image = "/boot/images/uqc-logo.png",
 		image_rl = 15
 	}
 }

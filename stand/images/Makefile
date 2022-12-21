@@ -2,7 +2,7 @@
 
 .include <bsd.init.mk>
 
-FILES+=	freebsd-brand-rev.png freebsd-brand.png freebsd-logo-rev.png
+FILES+=	uqc-brand-rev.png uqc-brand.png uqc-logo.png
 
 FILESDIR=  /boot/images
 
