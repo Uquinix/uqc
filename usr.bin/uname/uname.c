@@ -1,8 +1,4 @@
 /*-
- * NEW CODE IS LICENSED UNDER: Uquinix Public Source License
- *
- * File Modified by Uquinix Inc.
- *  
  * SPDX-License-Identifier: BSD-4-Clause
  *
  * Copyright (c) 2002 Juli Mallett.

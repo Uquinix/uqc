@@ -48,7 +48,7 @@ return {
 		},
 		requires_color = true,
 		shift = {x = 2, y = 3},
-		image = "/boot/images/enso-logo-rev.png",
+		image = "/boot/images/freebsd-logo-rev.png",
 		image_rl = 15
 	}
 }
