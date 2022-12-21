@@ -30,7 +30,7 @@ jobs:
           - target_arch: amd64
             target: amd64
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: install packages (Ubuntu)
         if: runner.os == 'Linux'
         run: |
