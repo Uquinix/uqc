@@ -45,7 +45,7 @@ f_include_lang $BSDCFG_LIBE/$APP_DIR/include/messages.subr
 # set some reasonable defaults if /etc/adduser.conf does not exist.
 [ -f /etc/adduser.conf ] && f_include /etc/adduser.conf
 : ${defaultclass:=""}
-: ${defaultshell:="/bin/sh"}
+: ${defaultshell:="/bin/zsh"}
 : ${homeprefix:="/home"}
 : ${passwdtype:="yes"}
 : ${udotdir:="/usr/share/skel"}
